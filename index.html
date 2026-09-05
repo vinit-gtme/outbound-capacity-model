@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Capacity Model — v3</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --bg:#14171c; --panel:#1b1f26; --line:#2b303a;
+  --ink:#e9e6de; --dim:#8b909a;
+  --teal:#6a9c8b; --gold:#d4a24c; --red:#c1666b; --grey:#565c67;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Newsreader',Georgia,serif;padding:28px 20px 60px;}
+.wrap{max-width:920px;margin:0 auto;}
+.mono{font-family:'IBM Plex Mono',SFMono-Regular,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums;}
+h1{font-size:24px;font-weight:600;margin:0 0 6px;letter-spacing:-0.01em;}
+h2{font-size:14px;font-weight:600;margin:0 0 12px;}
+.sub{color:var(--dim);font-size:14px;max-width:66ch;line-height:1.5;}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px;margin-bottom:16px;}
+.note{font-size:11.5px;color:var(--dim);line-height:1.5;margin-top:8px;}
+.note.warn{color:var(--red);}
+
+/* reference table */
+table.ref{width:100%;border-collapse:collapse;font-size:12.5px;}
+table.ref th{text-align:left;color:var(--dim);font-weight:500;padding:5px 8px;border-bottom:1px solid var(--line);font-size:11px;}
+table.ref td{padding:5px 8px;border-bottom:1px solid rgba(255,255,255,0.03);}
+table.ref td.label{color:var(--dim);}
+table.ref td.unknown{color:var(--red);font-style:italic;}
+
+.presets{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+button.preset{
+  font-family:'IBM Plex Mono',monospace;font-size:12px;background:transparent;
+  border:1px solid var(--line);color:var(--dim);padding:7px 13px;border-radius:6px;cursor:pointer;
+  transition:border-color .15s,color .15s;
+}
+button.preset:hover{border-color:var(--teal);color:var(--ink);}
+button.preset.active{border-color:var(--teal);color:var(--ink);background:rgba(106,156,139,0.12);}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
+.field{display:flex;flex-direction:column;gap:4px;}
+.field label{font-size:11.5px;color:var(--dim);}
+.field input{
+  font-family:'IBM Plex Mono',monospace;font-size:13px;
+  background:rgba(255,255,255,0.03);border:1px solid var(--line);color:var(--ink);
+  border-radius:6px;padding:7px 9px;width:100%;
+}
+.field input:focus{outline:1px solid var(--teal);border-color:var(--teal);}
+.field.flagged input{border-color:rgba(193,102,107,0.4);}
+.field .flag{color:var(--red);font-size:10px;}
+
+.slider-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;flex-wrap:wrap;gap:6px;}
+.slider-label{font-size:14px;color:var(--dim);}
+.slider-value{font-size:24px;font-weight:600;}
+.slider-value .unit{font-size:13px;color:var(--dim);font-family:'Newsreader',serif;margin-left:5px;}
+input[type=range]{width:100%;-webkit-appearance:none;height:4px;background:var(--line);border-radius:2px;outline:none;margin:12px 0 4px;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--teal);cursor:pointer;border:2px solid var(--bg);box-shadow:0 0 0 1px var(--teal);}
+input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--teal);cursor:pointer;border:2px solid var(--bg);box-shadow:0 0 0 1px var(--teal);}
+.tick-row{display:flex;justify-content:space-between;font-size:10.5px;color:var(--dim);}
+
+.funnels{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+@media (max-width:720px){.funnels{grid-template-columns:1fr;} .grid2,.grid3{grid-template-columns:1fr;}}
+.funnel-col h3{font-size:13px;font-weight:600;margin:0 0 4px;}
+.funnel-col .method-tag{font-size:10.5px;color:var(--dim);margin-bottom:12px;}
+.stage{margin-bottom:12px;}
+.stage-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;}
+.stage-name{font-size:12.5px;color:var(--dim);}
+.stage-num{font-size:17px;font-weight:600;}
+.bar-track{height:20px;background:rgba(255,255,255,0.04);border-radius:4px;position:relative;}
+.bar-fill{height:100%;border-radius:4px;transition:width .4s cubic-bezier(.2,.7,.3,1);width:0%;background:var(--teal);}
+.marker{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--gold);}
+.marker::after{content:attr(data-label);position:absolute;top:-15px;left:50%;transform:translateX(-50%);font-family:'IBM Plex Mono',monospace;font-size:9px;white-space:nowrap;color:var(--gold);}
+
+.compare-box{display:flex;gap:16px;flex-wrap:wrap;align-items:center;}
+.compare-stat{flex:1;min-width:180px;}
+.compare-stat .big{font-size:26px;font-weight:600;}
+.compare-stat .lbl{font-size:12px;color:var(--dim);margin-top:2px;}
+.compare-delta{font-size:13px;color:var(--gold);margin-top:10px;font-family:'IBM Plex Mono',monospace;}
+
+svg.curve{width:100%;height:180px;overflow:visible;margin-top:8px;}
+.axis-label{font-size:9.5px;fill:var(--dim);font-family:'IBM Plex Mono',monospace;}
+.grid-line{stroke:var(--line);stroke-width:1;}
+.fit-line{stroke:var(--gold);stroke-width:1.5;fill:none;}
+.pt{fill:var(--teal);}
+.pt-label{font-size:9.5px;fill:var(--dim);font-family:'IBM Plex Mono',monospace;}
+
+footer{margin-top:20px;font-size:11.5px;color:var(--dim);line-height:1.6;}
+
+table.ref td.calib-input input{
+  font-family:'IBM Plex Mono',monospace;font-size:12.5px;background:rgba(255,255,255,0.03);
+  border:1px solid var(--line);color:var(--ink);border-radius:5px;padding:5px 7px;width:90px;
+}
+table.ref tr.excluded{opacity:0.35;}
+table.ref td.residual{font-family:'IBM Plex Mono',monospace;font-size:12px;}
+table.ref td.residual.over{color:var(--gold);}
+table.ref td.residual.under{color:var(--teal);}
+.pt.excluded{opacity:0.25;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Capacity model — v3</h1>
+  <div class="sub">Two ways of asking the same question: a flat-ratio calculator using each operator's average conversion rates, and a degradation-curve calculator that assumes those rates get worse as volume scales. Same slider drives both, so the gap between them is visible directly.</div>
+</header>
+
+<!-- REFERENCE DATA -->
+<div class="panel">
+  <h2>Operator averages, as given</h2>
+  <table class="ref">
+    <tr><th></th><th>Claudia (30 wk avg)</th><th>Sergio (avg)</th></tr>
+    <tr><td class="label">Emails sent / wk</td><td class="mono">4,643</td><td class="mono">19,532</td></tr>
+    <tr><td class="label">Personas contacted / wk</td><td class="mono">3,867</td><td class="mono">16,502 (last 6 weeks only)</td></tr>
+    <tr><td class="label">Positive replies / wk</td><td class="mono">4.8</td><td class="mono">9.33</td></tr>
+    <tr><td class="label">Meetings booked / wk</td><td class="mono">2.5</td><td class="mono">4.30</td></tr>
+    <tr><td class="label">Positive → booked rate</td><td class="mono">44%</td><td class="mono">46.1%</td></tr>
+    <tr><td class="label">Meetings sat / wk</td><td class="mono">2.1</td><td class="mono unknown">not given</td></tr>
+    <tr><td class="label">Show rate</td><td class="mono">64.2%</td><td class="mono unknown">not given — defaulting to Claudia's 64.2%, edit below if you have a better number</td></tr>
+  </table>
+  <div class="note warn">Heads-up: these booked/show rates are lower than the pooled 30-week totals we calculated earlier (51.7% booked, 84% show). That's likely because averaging each week's percentage treats a week with 1 booked/0 sat as a flat 0%, even though the whole-period total tells a better story. Using your numbers as given below — swap in the pooled versions any time by editing the fields.</div>
+  <div class="note warn">Second heads-up: Sergio's "People Contacted" is only tracked for his most recent 6 of 30 weeks — the earlier weeks don't have it in the source file at all, so 16,502 isn't comparable to Claudia's full 30-week average. To get prospects-per-positive, we pooled totals from just those matching 6 weeks (99,015 contacted / 82 positive = 1,207.5) rather than dividing two averages built on different week-counts. Same approach for touches-per-prospect (188,796 emails / 99,015 contacted over the same 6 weeks = 1.91), rather than mixing the 30-week email average with the 6-week contacted average.</div>
+</div>
+
+<!-- PROFILE + FLAT RATIOS -->
+<div class="panel">
+  <h2>Flat-ratio inputs — used by the left-hand funnel below</h2>
+  <div class="presets">
+    <button class="preset active" id="profClaudia">Claudia's ratios</button>
+    <button class="preset" id="profSergio">Sergio's ratios</button>
+    <button class="preset" id="profCustom">Custom</button>
+  </div>
+  <div class="grid3" style="grid-template-columns:1fr 1fr 1fr 1fr;">
+    <div class="field"><label>Prospects per positive reply</label><input type="number" id="flatPPP" value="805.6"></div>
+    <div class="field"><label>Positive → booked rate (%)</label><input type="number" id="flatBookRate" value="44"></div>
+    <div class="field flagged" id="showRateField"><label>Booked → sat / show rate (%)</label><input type="number" id="flatShowRate" value="64.2"></div>
+    <div class="field"><label>Touches per prospect (emails ÷ prospects)</label><input type="number" id="flatTouchRate" value="1.200" step="0.001"></div>
+  </div>
+  <div class="note" id="flatNote"></div>
+</div>
+
+<!-- DEGRADATION CURVE CALIBRATION -->
+<div class="panel">
+  <h2>Degradation curve calibration — both operators' real weekly tiers</h2>
+  <div class="note">Uncheck a row to see how much the fit and the "volume needed" answer depend on any single point.</div>
+  <table class="ref" id="calibTable" style="margin-top:10px;">
+    <tr><th></th><th>Operator / tier</th><th>Volume/wk</th><th>Prospects/positive</th><th>Fit residual</th></tr>
+  </table>
+  <svg class="curve" id="curveSvg" viewBox="0 0 700 200"></svg>
+  <div class="note" id="fitNote"></div>
+  <div class="note" id="fitQualityNote"></div>
+</div>
+
+<!-- GOAL + VOLUME -->
+<div class="panel">
+  <div class="grid2" style="margin-bottom:16px;">
+    <div class="field"><label>Weekly goal — meetings sat</label><input type="number" id="targetSat" value="10"></div>
+    <div class="field"><label>Booked → sat rate used by the curve model (%)</label><input type="number" id="curveShowRate" value="64.2"></div>
+  </div>
+  <div class="slider-row">
+    <div class="slider-label">Prospects contacted / week</div>
+    <div class="slider-value"><span id="volVal">15,000</span><span class="unit">/ wk</span></div>
+  </div>
+  <input type="range" id="volSlider" min="1000" max="40000" step="100" value="15000">
+  <div class="tick-row"><span>1,000</span><span>40,000</span></div>
+</div>
+
+<!-- SIDE BY SIDE FUNNELS -->
+<div class="funnels">
+  <div class="panel funnel-col">
+    <h3>Flat-ratio calculator</h3>
+    <div class="method-tag">Same conversion rate at every volume — the "if I reach X prospects, I should get Y meetings" math.</div>
+    <div class="stage">
+      <div class="stage-head"><div class="stage-name">Prospects contacted</div><div class="stage-num mono" id="flatNumProspects">15,000</div></div>
+      <div class="bar-track"><div class="bar-fill" style="width:100%;background:var(--dim);opacity:0.3;"></div></div>
+    </div>
+    <div class="stage">
+      <div class="stage-head"><div class="stage-name">Positive replies</div><div class="stage-num mono" id="flatNumPositives">18.6</div></div>
+      <div class="bar-track"><div class="bar-fill" id="flatBarPositives"></div></div>
+    </div>
+    <div class="stage">
+      <div class="stage-head"><div class="stage-name">Meetings booked</div><div class="stage-num mono" id="flatNumBooked">8.2</div></div>
+      <div class="bar-track"><div class="bar-fill" id="flatBarBooked"></div></div>
+    </div>
+    <div class="stage">
+      <div class="stage-head"><div class="stage-name">Meetings sat</div><div class="stage-num mono" id="flatNumSat">5.3</div></div>
+      <div class="bar-track">
+        <div class="bar-fill" id="flatBarSat"></div>
+        <div class="marker" id="flatGoalMarker" data-label="goal"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel funnel-col">
+    <h3>Degradation-curve calculator</h3>
+    <div class="method-tag">Prospects-per-positive worsens as weekly volume scales, per Sergio's real curve above.</div>
+    <div class="stage">
+      <div class="stage-head"><div class="stage-name">Prospects contacted</div><div class="stage-num mono" id="curveNumProspects">15,000</div></div>
+      <div class="bar-track"><div class="bar-fill" style="width:100%;background:var(--dim);opacity:0.3;"></div></div>
+    </div>
+    <div class="stage">
+      <div class="stage-head"><div class="stage-name">Positive replies <span class="mono" id="curveRatio" style="color:var(--dim);font-size:10.5px;"></span></div><div class="stage-num mono" id="curveNumPositives">—</div></div>
+      <div class="bar-track"><div class="bar-fill" id="curveBarPositives"></div></div>
+    </div>
+    <div class="stage">
+      <div class="stage-head"><div class="stage-name">Meetings booked</div><div class="stage-num mono" id="curveNumBooked">—</div></div>
+      <div class="bar-track"><div class="bar-fill" id="curveBarBooked"></div></div>
+    </div>
+    <div class="stage">
+      <div class="stage-head"><div class="stage-name">Meetings sat</div><div class="stage-num mono" id="curveNumSat">—</div></div>
+      <div class="bar-track">
+        <div class="bar-fill" id="curveBarSat"></div>
+        <div class="marker" id="curveGoalMarker" data-label="goal"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- GOAL COMPARISON -->
+<div class="panel">
+  <h2>Volume needed to hit your weekly goal</h2>
+  <div class="compare-box">
+    <div class="compare-stat">
+      <div class="big mono" id="flatNeeded">18,600 / wk</div>
+      <div class="lbl">flat-ratio math — prospects/week (≈ <span class="mono" id="flatNeededEmails">—</span> emails/week)</div>
+    </div>
+    <div class="compare-stat">
+      <div class="big mono" id="curveNeeded">—</div>
+      <div class="lbl">degradation-curve math — prospects/week</div>
+    </div>
+  </div>
+  <div class="compare-delta" id="deltaNote"></div>
+</div>
+
+<footer id="footerNote">
+  Touches per prospect (emails ÷ prospects contacted): Claudia ≈ 1.20 (4,643/3,867, her full 30-week average). Sergio ≈ 1.91 (188,796 emails / 99,015 contacted, pooled over the 6 weeks his contacted figure was tracked — not his full 30-week email average, since that would mix two different time windows). Both are editable in the "touches per prospect" field above and feed the "≈ emails/week" readout in the goal comparison. The flat calculator holds prospects-per-positive constant at whatever volume you select; the curve calculator recalculates it at each volume using the fitted line above (which still uses the earlier Bison per-campaign tiers, not these spreadsheet-sourced averages — the two data sources haven't been reconciled). Edit any field — profiles, rates, or calibration points — and everything recomputes live.
+</footer>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+const flatPPP = $('flatPPP'), flatBookRate = $('flatBookRate'), flatShowRate = $('flatShowRate'), flatTouchRate = $('flatTouchRate');
+const targetSat = $('targetSat'), curveShowRate = $('curveShowRate');
+const volSlider = $('volSlider'), volVal = $('volVal');
+
+// ---- calibration dataset: both operators' real tiers ----
+const CALIB_POINTS = [
+  {label:"Claudia · Tier 1", v:542,  p:474,  checked:true},
+  {label:"Claudia · Tier 2", v:1578, p:356,  checked:true},
+  {label:"Claudia · Tier 3", v:3599, p:525,  checked:true},
+  {label:"Claudia · Tier 4", v:8445, p:1310, checked:true},
+  {label:"Sergio · Tier A",  v:2072, p:259,  checked:true},
+  {label:"Sergio · Tier B",  v:4874, p:443,  checked:true},
+  {label:"Sergio · Tier C",  v:12316,p:803,  checked:true},
+];
+
+function buildCalibTable(){
+  const table = $('calibTable');
+  CALIB_POINTS.forEach((pt, i)=>{
+    const row = document.createElement('tr');
+    row.id = 'calibRow'+i;
+    row.innerHTML = `
+      <td><input type="checkbox" ${pt.checked?'checked':''} id="calibCheck${i}"></td>
+      <td class="label">${pt.label}</td>
+      <td class="calib-input"><input type="number" id="calibV${i}" value="${pt.v}"></td>
+      <td class="calib-input"><input type="number" id="calibP${i}" value="${pt.p}"></td>
+      <td class="residual mono" id="calibResid${i}">—</td>
+    `;
+    table.appendChild(row);
+  });
+}
+buildCalibTable();
+
+function getCalibPoints(){
+  const pts = [];
+  CALIB_POINTS.forEach((pt,i)=>{
+    const checked = $('calibCheck'+i).checked;
+    const v = Number($('calibV'+i).value);
+    const p = Number($('calibP'+i).value);
+    if(checked && v>0 && p>0) pts.push({i,v,p});
+  });
+  return pts;
+}
+
+function fmt(n,d=0){ return Number(n).toLocaleString(undefined,{maximumFractionDigits:d,minimumFractionDigits:d}); }
+
+// ---- profiles ----
+const PROFILES = {
+  claudia: {ppp: 3867/4.8, bookRate: 44, showRate: 64.2, touchRate: 4643/3867},
+  sergio:  {ppp: 1207.5,   bookRate: 46.1, showRate: 64.2, touchRate: 1.907}, // ppp & touchRate pooled from the 6 weeks where contacted was tracked; showRate still unknown, defaulted to Claudia's
+};
+
+function applyProfile(name){
+  const p = PROFILES[name];
+  flatPPP.value = p.ppp.toFixed(1);
+  flatBookRate.value = p.bookRate;
+  flatShowRate.value = p.showRate;
+  flatTouchRate.value = p.touchRate.toFixed(3);
+  ['profClaudia','profSergio','profCustom'].forEach(id=>$(id).classList.remove('active'));
+  if(name==='claudia') $('profClaudia').classList.add('active');
+  if(name==='sergio') $('profSergio').classList.add('active');
+  render();
+}
+$('profClaudia').addEventListener('click', ()=>applyProfile('claudia'));
+$('profSergio').addEventListener('click', ()=>applyProfile('sergio'));
+$('profCustom').addEventListener('click', ()=>{
+  ['profClaudia','profSergio','profCustom'].forEach(id=>$(id).classList.remove('active'));
+  $('profCustom').classList.add('active');
+});
+
+// ---- degradation curve fit ----
+function fitCurve(){
+  const pts = getCalibPoints();
+  if(pts.length<2) return {a:1, b:0, pts:[], r2:null};
+  const x = pts.map(p=>Math.log(p.v));
+  const y = pts.map(p=>Math.log(p.p));
+  const n=pts.length;
+  const mx=x.reduce((s,v)=>s+v,0)/n;
+  const my=y.reduce((s,v)=>s+v,0)/n;
+  let num=0, den=0;
+  for(let i=0;i<n;i++){ num+=(x[i]-mx)*(y[i]-my); den+=(x[i]-mx)*(x[i]-mx); }
+  const b = den===0 ? 0 : num/den;
+  const a = Math.exp(my - b*mx);
+  // R^2 in log space
+  let ssRes=0, ssTot=0;
+  for(let i=0;i<n;i++){
+    const pred = my + b*(x[i]-mx); // = ln(a) + b*x[i]
+    ssRes += (y[i]-pred)*(y[i]-pred);
+    ssTot += (y[i]-my)*(y[i]-my);
+  }
+  const r2 = ssTot===0 ? 1 : 1 - ssRes/ssTot;
+  return {a,b,pts,r2};
+}
+function P_of_V(V, curve){ return curve.a * Math.pow(V, curve.b); }
+
+function widthPct(value,maxValue){
+  if(value<=0) return 5;
+  const vv=Math.log10(value+1), mm=Math.log10(maxValue+1);
+  return Math.max(5, Math.min(100,(vv/mm)*100));
+}
+
+function drawCurve(curve){
+  const svg=$('curveSvg');
+  const W=700,H=200,ML=46,MR=10,MT=10,MB=26;
+  const allPts = CALIB_POINTS.map((pt,i)=>({v:Number($('calibV'+i).value), p:Number($('calibP'+i).value), checked:$('calibCheck'+i).checked}));
+  const allV = allPts.map(p=>p.v).filter(v=>v>0);
+  const allP = allPts.map(p=>p.p).filter(p=>p>0);
+  const minV=Math.log(Math.min(...allV)*0.7), maxV=Math.log(Math.max(...allV)*1.4);
+  const minP=Math.log(Math.min(...allP)*0.6), maxP=Math.log(Math.max(...allP)*1.5);
+  const x = lv => ML + (lv-minV)/(maxV-minV) * (W-ML-MR);
+  const y = lp => (H-MB) - (lp-minP)/(maxP-minP) * (H-MB-MT);
+
+  let path='';
+  const steps=40;
+  for(let i=0;i<=steps;i++){
+    const lv = minV + (maxV-minV)*i/steps;
+    const V = Math.exp(lv);
+    const P = P_of_V(V,curve);
+    const px=x(lv), py=y(Math.log(P));
+    path += (i===0?'M':'L') + px.toFixed(1) + ' ' + py.toFixed(1) + ' ';
+  }
+
+  let pointsSvg='';
+  allPts.forEach((d,i)=>{
+    if(!d.v||!d.p) return;
+    const px=x(Math.log(d.v)), py=y(Math.log(d.p));
+    const predicted = P_of_V(d.v, curve);
+    const residLine = d.checked ? `<line x1="${px}" y1="${py}" x2="${px}" y2="${y(Math.log(predicted))}" stroke="var(--line)" stroke-width="1" stroke-dasharray="2,2"></line>` : '';
+    pointsSvg += residLine + `<circle class="pt ${d.checked?'':'excluded'}" cx="${px}" cy="${py}" r="4"></circle>`;
+
+    // update table residual cell
+    const cell = $('calibResid'+i);
+    if(cell){
+      const ratio = d.p/predicted;
+      cell.textContent = ratio.toFixed(2)+'x';
+      cell.className = 'residual mono ' + (ratio>1.1?'over':(ratio<0.9?'under':''));
+    }
+    const rowEl = $('calibRow'+i);
+    if(rowEl) rowEl.className = d.checked ? '' : 'excluded';
+  });
+
+  svg.innerHTML = `
+    <line class="grid-line" x1="${ML}" y1="${H-MB}" x2="${W-MR}" y2="${H-MB}"></line>
+    <line class="grid-line" x1="${ML}" y1="${MT}" x2="${ML}" y2="${H-MB}"></line>
+    <text class="axis-label" x="${ML}" y="${H-6}">volume/wk →</text>
+    <path class="fit-line" d="${path}"></path>
+    ${pointsSvg}
+  `;
+}
+
+function solveFlatVolume(target, ppp, bookRate, showRate){
+  return target / (showRate/100) / (bookRate/100) * ppp;
+}
+function solveCurveVolume(target, curve, bookRate, showRate){
+  let lo=100, hi=2000000;
+  for(let i=0;i<60;i++){
+    const mid=(lo+hi)/2;
+    const positives = mid/P_of_V(mid,curve);
+    const held = positives*(bookRate/100)*(showRate/100);
+    if(held<target) lo=mid; else hi=mid;
+  }
+  return (lo+hi)/2;
+}
+
+function render(){
+  const V = Number(volSlider.value);
+  volVal.textContent = fmt(V);
+
+  // touch rate for Claudia only, informational
+  const touchRate = Number(flatTouchRate.value) || 1;
+
+  // ---- FLAT ----
+  const ppp = Number(flatPPP.value);
+  const bookRate = Number(flatBookRate.value);
+  const showRate = Number(flatShowRate.value);
+  const flatPositives = V/ppp;
+  const flatBooked = flatPositives*(bookRate/100);
+  const flatSat = flatBooked*(showRate/100);
+
+  $('flatNumProspects').textContent = fmt(V);
+  $('flatNumPositives').textContent = fmt(flatPositives,1);
+  $('flatNumBooked').textContent = fmt(flatBooked,1);
+  $('flatNumSat').textContent = fmt(flatSat,1);
+  $('flatBarPositives').style.width = widthPct(flatPositives,60)+'%';
+  $('flatBarBooked').style.width = widthPct(flatBooked,25)+'%';
+  $('flatBarSat').style.width = widthPct(flatSat,20)+'%';
+  const target = Number(targetSat.value)||10;
+  $('flatBarSat').style.background = flatSat>=target ? 'var(--teal)' : (flatSat>=target*0.6 ? 'var(--gold)' : 'var(--red)');
+  $('flatGoalMarker').style.left = widthPct(target,20)+'%';
+  $('flatGoalMarker').setAttribute('data-label','goal · '+target);
+
+  // ---- CURVE ----
+  const curve = fitCurve();
+  drawCurve(curve);
+  const cShowRate = Number(curveShowRate.value);
+  const curveP = P_of_V(V, curve);
+  const curvePositives = V/curveP;
+  const curveBooked = curvePositives*(bookRate/100);
+  const curveSat = curveBooked*(cShowRate/100);
+
+  $('curveNumProspects').textContent = fmt(V);
+  $('curveRatio').textContent = '(1 : '+fmt(curveP)+')';
+  $('curveNumPositives').textContent = fmt(curvePositives,1);
+  $('curveNumBooked').textContent = fmt(curveBooked,1);
+  $('curveNumSat').textContent = fmt(curveSat,1);
+  $('curveBarPositives').style.width = widthPct(curvePositives,60)+'%';
+  $('curveBarBooked').style.width = widthPct(curveBooked,25)+'%';
+  $('curveBarSat').style.width = widthPct(curveSat,20)+'%';
+  $('curveBarSat').style.background = curveSat>=target ? 'var(--teal)' : (curveSat>=target*0.6 ? 'var(--gold)' : 'var(--red)');
+  $('curveGoalMarker').style.left = widthPct(target,20)+'%';
+  $('curveGoalMarker').setAttribute('data-label','goal · '+target);
+
+  const nPts = curve.pts.length;
+  $('fitNote').textContent = `Fit across ${nPts} tiers: P(V) = ${curve.a.toFixed(2)}·V^${curve.b.toFixed(3)}. Doubling weekly volume degrades prospects-per-positive by ${((Math.pow(2,curve.b)-1)*100).toFixed(1)}%.`;
+  if(curve.r2!==null){
+    const quality = curve.r2>0.7 ? 'reasonably tight' : (curve.r2>0.4 ? 'loose' : 'weak — treat the line as a rough trend, not a measurement');
+    $('fitQualityNote').textContent = `R² (log-space) = ${curve.r2.toFixed(2)} — the fit is ${quality}. Individual points sit up to ${Math.max(...curve.pts.map(p=>Math.abs(Math.log(p.p/P_of_V(p.v,curve))))).toFixed(2)} log-units off the line — see the residual column above.`;
+  }
+
+  // ---- GOAL COMPARISON ----
+  const flatNeeded = solveFlatVolume(target, ppp, bookRate, showRate);
+  const curveNeeded = solveCurveVolume(target, curve, bookRate, cShowRate);
+  $('flatNeeded').textContent = fmt(flatNeeded,0)+' / wk';
+  $('flatNeededEmails').textContent = fmt(flatNeeded*touchRate,0);
+  $('curveNeeded').textContent = fmt(curveNeeded,0)+' / wk';
+
+  const ratio = curveNeeded/flatNeeded;
+  $('deltaNote').textContent = ratio>1.05
+    ? `The degradation curve says you'd need ${fmt((ratio-1)*100,0)}% more volume than flat-ratio math suggests to hit ${target}/wk — the flat number is optimistic once volume climbs.`
+    : `At this rate combination, the two methods land close together — degradation isn't a big factor at the volumes involved.`;
+
+  $('flatNote').textContent = `Using ${$('profClaudia').classList.contains('active') ? "Claudia's" : ($('profSergio').classList.contains('active') ? "Sergio's" : 'custom')} flat ratios: 1 positive per ${fmt(ppp,0)} prospects, ${bookRate}% book, ${showRate}% show.`;
+}
+
+[flatPPP, flatBookRate, flatShowRate, flatTouchRate, targetSat, curveShowRate, volSlider].forEach(el=>el.addEventListener('input',render));
+CALIB_POINTS.forEach((pt,i)=>{
+  $('calibV'+i).addEventListener('input', render);
+  $('calibP'+i).addEventListener('input', render);
+  $('calibCheck'+i).addEventListener('change', render);
+});
+
+render();
+</script>
+</body>
+</html>
